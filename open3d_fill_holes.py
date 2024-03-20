@@ -373,26 +373,57 @@ if __name__ == '__main__':
 
     # reproj pcd to depth
     pts = np.asarray(samp_pcd.points)
-    x = pts[:, 0]
-    # x = np.array(x * fx)
-    y = pts[:, 1]
-    # y = np.array(y * fy)
-    z = pts[:, 2]
+    X = pts[:, 0]
+    Y = pts[:, 1]
+    Z = pts[:, 2]
 
-    # bbox = o3d.geometry.OrientedBoundingBox()
     maxbbox = o3d.geometry.Geometry3D.get_max_bound(samp_pcd)
     minbbox = o3d.geometry.Geometry3D.get_min_bound(samp_pcd)
     depth_pc = abs(maxbbox[2] - minbbox[2])
 
-    # align = offset_
-    # max_size = 2 * std::max(std::max(align[0] - minbbox[0], maxbbox[0] - align[0]),
-    #                         std::max(align[1] - minbbox[1], maxbbox[1] - align[1]))
-    #
-    # project_width_ = 128
-    # project_height_ = 128
-    # pos_x_ratio = (project_width_ - 1.) / max_size
-    # pos_y_ratio = (project_height_ - 1.) / max_size
-    #
-    # values(project_width_ * project_height_, 0.0)
-    # indeces(project_width_ * project_height_, 0)
-    
+    offset_ = (0, 0, 0)
+    align = offset_
+    max_size = 2 * max(max(align[0] - minbbox[0], maxbbox[0] - align[0]),
+                            max(align[1] - minbbox[1], maxbbox[1] - align[1]))
+
+    project_width_ = 96
+    project_height_ = 96
+    target_width = 128
+    target_height = 128
+    pos_x_ratio = (project_width_ - 1.) / max_size
+    pos_y_ratio = (project_height_ - 1.) / max_size
+
+    values = np.zeros((project_width_ * project_height_, 1))
+    indeces = np.zeros((project_width_ * project_height_, 1))
+    half_project_width_ = project_width_ / 2.
+    half_project_height_ = project_height_ / 2.
+
+    for j in range(0, pts.shape[0]):
+        x = int((X[j] - align[0]) * pos_x_ratio) + half_project_width_
+        y = int((Y[j] - align[1]) * pos_y_ratio) + half_project_height_
+
+        if project_width_ - 1 >= x >= 0 and project_height_ - 1 >= y >= 0:
+            pos = round((project_height_ - y) * project_width_ + x)
+            indeces[pos] += 1
+            values[pos] += Z[j]
+
+    save_precision_ = False
+    pos_z_ratio = 1 / depth_pc
+    z_ratio = 255 * pos_z_ratio
+    depth_image = np.zeros((project_height_, project_width_), np.uint8)
+    for y in range(0, project_height_):
+      for x in range( project_width_):
+        pos = y * project_width_ + x
+        count = indeces[pos]
+        if count > 0:
+          depth_image[y, x] = (values[pos] / count - minbbox[2]) * z_ratio
+        else:
+          depth_image[y, x] = 0
+
+    if project_width_ != target_width or project_height_ != target_height:
+      depth_image = cv2.resize(depth_image, (target_width, target_height))
+
+    cv2.imshow("depth", depth_image)
+    cv2.waitKey()
+
+    # align with template
