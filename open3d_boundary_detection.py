@@ -46,7 +46,7 @@ if __name__ == '__main__':
     faces = detect_face(rgb_face)
     face = faces[0]
     landmarks = face['kps']
-    nose_tip = landmarks[2]
+    nose_tip = landmarks[2]  # 125, 379
 
     # transform pcd to depth
     pts = np.asarray(pcd.points)
@@ -58,22 +58,22 @@ if __name__ == '__main__':
 
     # visualize depth map and nose tip
     depth = np.reshape(z, (depth_height, depth_width))
-    min_z = np.min(z)
-    max_z = np.max(z)
+    min_z = np.min(z)  # -5.057
+    max_z = np.max(z)  # -0.0
     depth_map = 255 * (depth - min_z) / (max_z - min_z)
     depth_map = depth_map.astype(np.uint8)
 
-    nose_x = int(nose_tip[0])
-    nose_y = int(nose_tip[1])
+    nose_x = int(nose_tip[0])  # 125
+    nose_y = int(nose_tip[1])  # 379
     nose_z = depth[nose_y, nose_x] * (max_z - min_z) / 255 + min_z
 
     # 将nose的2D坐标转换为3D坐标
-    ind_nose = nose_x + nose_y * 400
+    ind_nose = nose_x + nose_y * 400  # 151725
     # ind_nose = (np.abs(z - nose_z)).argmin()
-    z0 = z[ind_nose]  # -0.484
-    x0 = x[ind_nose]  # -0.0605
-    y0 = y[ind_nose]  # -0.093092
-    print(x0, y0, z0)
+    z0 = z[ind_nose]
+    x0 = x[ind_nose]
+    y0 = y[ind_nose]
+    print(x0, y0, z0)  # -0.0692716 -0.0612456 -0.353
 
     # # 球切SCM——输入nose的3D坐标x0, yo, z0, 输出球内点云坐标
     r = 45 / fx

@@ -21,8 +21,8 @@ import os
 
 # max_label = labels.max()
 # print(f"point cloud has {max_label + 1} clusters")
-# colors = plt.get_cmap("tab20")(labels / (max_label if max_label &gt; 0 else 1))
-# colors[labels &lt; 0] = 0
+# colors = plt.get_cmap("tab20")(labels / (max_label if max_label &gt 0 else 1))
+# colors[labels &lt 0] = 0
 # pcd.colors = o3d.utility.Vector3dVector(colors[:, :3])
 
 # segment_plane
@@ -89,8 +89,10 @@ def get_rgb_from_bin(rgb_file, w=640, h=480):
         YUV[row, col] = num[0]
     binfile.close()
     rgb_face = cv2.cvtColor(YUV, cv2.COLOR_YUV2BGR_NV21)
-    # rgb_face = cv2.rotate(rgb_face, cv2.ROTATE_90_CLOCKWISE)
+    rgb_face = cv2.rotate(rgb_face, cv2.ROTATE_90_CLOCKWISE)
 
+    # cv2.imshow("rgb", rgb_face)
+    # cv2.waitKey()
     return rgb_face
 
 
@@ -174,7 +176,9 @@ def scp_face(pts, nose_3d, radius):
         Z = z[i]
 
         dis = (x0 - X) * (x0 - X) + (y0 - Y) * (y0 - Y) + (z0 - Z) * (z0 - Z)
-        if dis < radius * radius:
+        # dis = abs(z0 - Z)
+
+        if dis < radius * radius:  #  radius * radius
             indx.append(i)
 
     # visualize cropped point cloud
@@ -187,21 +191,12 @@ def scp_face(pts, nose_3d, radius):
 if __name__ == '__main__':
 
     # read rgb image
-    # data_dir = r'testdata/record/612729198904052114-20240110142341'
-    data_dir = r'/home/xt/zk/XJTU_DATA_2023_part1-4/record20231224083748/11309581-20231224080915'
+    data_dir = r'testdata/record/612729198904052114-20240110142341'
 
-    rgb_file = os.path.join(data_dir, 'rgb.bin')
+    rgb_file = os.path.join(data_dir, 'rgb.jpg')
     set_file = os.path.join(data_dir, 'set.txt')
     data_file = os.path.join(data_dir, 'data.bin')
-    if rgb_file.endswith('.bin'):
-        rgb_image = get_rgb_from_bin(rgb_file)
-    else:
-        rgb_image = cv2.imread(rgb_file, -1)
-
-    # cv2.namedWindow('rgb_face', 0)
-    # cv2.imshow('rgb_face', rgb_image)
-    # cv2.waitKey(0)
-    cv2.imwrite(os.path.join(data_dir, 'rgb.png'), rgb_image)
+    pcd_file = os.path.join(data_dir, 'pc.ply')
 
     # read params: fx, fy, cx, cy
     params = get_intrinsic_from_txt(set_file)
@@ -210,28 +205,41 @@ if __name__ == '__main__':
     cx = float(params['3d_cx'])
     cy = float(params['clor_cy'])
     color_width = int(params['clor_width'])
-    clor_height = int(params['clor_height'])
+    color_height = int(params['clor_height'])
     depth_width = int(params['3d_width'])
     depth_height = int(params['3d_height'])
     depth_scale = 0.001
 
-    # get depth image
-    instrinsic = depth_width, depth_height, fx, fy, cx, cy
-    depth_image = get_depth_from_bin(data_file, instrinsic)
-    # cv2.imwrite(os.path.join(data_dir, 'depth.png'), np.array(depth_image, np.uint8))
-    # plt.imshow(depth_image, cmap='gray')
-    # plt.imsave(os.path.join(data_dir, 'depth.png'), depth_image, cmap='gray')
-    plt.imsave('depth.png', depth_image, cmap='gray')
+    if rgb_file.endswith('.bin'):
+        rgb_image = get_rgb_from_bin(rgb_file,color_width, color_height)
+    else:
+        rgb_image = cv2.imread(rgb_file, -1)
+
+    # cv2.namedWindow('rgb_face', 0)
+    # cv2.imshow('rgb_face', rgb_image)
+    # cv2.waitKey(0)
+    cv2.imwrite(os.path.join(data_dir, 'rgb.png'), rgb_image)
+
+
 
     w, h = depth_width, depth_height
     points = np.zeros((w * h, 3), dtype=np.float32)
+    pcd = o3d.geometry.PointCloud()
 
-    pcd_file = os.path.join(data_dir, 'pc.ply')
-    if os.path.exists(pcd_file):  # read pcd
+    depth_image = np.zeros((depth_height, depth_width), dtype=np.float32)
+    # get depth image from data.bin
+    if os.path.exists(pcd_file):
         pcd = o3d.io.read_point_cloud(pcd_file)
         pcd.estimate_normals()
-        o3d.visualization.draw_geometries([pcd], window_name='original face', width=depth_width, height=depth_height)
-    else:  # create pcd from depth image
+    elif os.path.exists(data_file):
+        instrinsic = depth_width, depth_height, fx, fy, cx, cy
+        depth_image = get_depth_from_bin(data_file, instrinsic)
+        # cv2.imwrite(os.path.join(data_dir, 'depth.png'), np.array(depth_image, np.uint8))
+        # plt.imshow(depth_image, cmap='gray')
+        # plt.imsave(os.path.join(data_dir, 'depth.png'), depth_image, cmap='gray')
+        plt.imsave('depth.png', depth_image, cmap='gray')
+
+        # transform depth image to point cloud
         n = 0
         for y in range(h):
             for x in range(w):
@@ -243,26 +251,21 @@ if __name__ == '__main__':
                 points[n][1] = X
                 n = n + 1
 
-        pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(points.reshape(-1, 3))
         # pcd.points = o3d.utility.Vector3dVector(points)
 
-        # pcd.remove_duplicated_points()
-        # pcd.remove_non_finite_points()
-        # pcd.remove_statistical_outlier(nb_neighbors=10, std_ratio=0.2)
-
-        # estimate normals
-        # pcd.normals = o3d.utility.Vector3dVector(np.zeros(
-        #     (1, 3)))  # invalidate existing normals
         pcd.estimate_normals()
         o3d.io.write_point_cloud("pcd.ply", pcd)
-        # o3d.visualization.draw([pcd])
+    else:
+        print('no depth data')
+
+    o3d.visualization.draw_geometries([pcd], window_name='original face', width=depth_width, height=depth_height)
 
     # 1. detect face and landmarks in RGB image
     faces = detect_face(rgb_image)
     face = faces[0]
     landmarks = face['kps']
-    nose_tip = landmarks[2]
+    nose_tip = landmarks[2]  # 204 379
 
     # transform pcd to depth
     pts = np.asarray(pcd.points)
@@ -275,7 +278,7 @@ if __name__ == '__main__':
     # visualize depth map and nose tip
     depth = np.reshape(z, (depth_height, depth_width))
 
-    depth = depth_image
+    # depth = depth_image
     min_z = np.min(z)
     max_z = np.max(z)
     depth_map = 255 * (depth - min_z) / (max_z - min_z)
@@ -283,7 +286,7 @@ if __name__ == '__main__':
 
     nose_x = int(nose_tip[0])
     nose_y = int(nose_tip[1])
-    # nose_z = depth[nose_y, nose_x]
+    nose_z = depth[nose_y, nose_x] * (max_z - min_z) / 255 + min_z
 
     cv2.drawMarker(rgb_image, (nose_x, nose_y), (255, 255, 0), markerType=cv2.MARKER_CROSS, markerSize=10, thickness=3)
     cv2.imshow('nose', rgb_image)
@@ -291,20 +294,20 @@ if __name__ == '__main__':
 
     # # todo:将nose的2D坐标转换为3D坐标
     ind_nose = nose_x + nose_y * 400
-    # ind_nose = (np.abs(z - nose_z)).argmin()
     z0 = z[ind_nose]  # -0.484
     x0 = x[ind_nose]  # -0.0605
     y0 = y[ind_nose]  # -0.093092
+    print(x0, y0, z0)  # -0.0123811 -0.0695736 -0.401
 
-    z_nose = z[ind_nose - 100:ind_nose + 100]
-    z_nose = z_nose[z_nose > 0]
-    z0 = np.median(z_nose)
+    # z_nose = depth[nose_x - 11:nose_x + 10, nose_y - 11:nose_y + 10]
+    # z_nose = z_nose[z_nose > 0]
+    # z0 = np.median(z_nose)
+    # z0 = z0 * (max_z - min_z) / 255 + min_z
     if z0 == 0:
         print('error')
 
     # # 球切SCM——输入nose的3D坐标x0, yo, z0, 输出球内点云坐标
-    # r = 45 / fx
-    r = 1000
+    r = 45 / fx
 
     nose_3d = np.array((x0, y0, z0))
     cropped_pts = scp_face(pts, nose_3d, r)
@@ -347,7 +350,7 @@ if __name__ == '__main__':
     # # mesh.paint_uniform_color(np.array([[0.5], [0.5], [0.5]]))
 
     # fill holes in mesh
-    filled = mesh.fill_holes(hole_size=10000)
+    filled = mesh.fill_holes(hole_size=100)
 
     # visualize filled holes
     filled.vertex.colors = o3d.core.Tensor([[0.0, 0.0, 0.0],
@@ -359,13 +362,37 @@ if __name__ == '__main__':
     filled = filled.to_legacy()
     # filled.compute_triangle_normals()
     filled.compute_vertex_normals()
-    o3d.visualization.draw_geometries([filled], title='possion')
-
-    # o3d.visualization.draw_geometries([pcd], window_name="pcd of filling holes")
+    o3d.visualization.draw_geometries([filled], window_name="hole filled")
 
     # resample points
-    # num_points = filled.points
     samp_pcd = filled.sample_points_uniformly(30000, use_triangle_normal=False)
     # samp_pcd = filled.sample_points_poisson_disk(30000, use_triangle_normal=False)  # 效果差
 
     o3d.visualization.draw_geometries([samp_pcd], window_name="resampled pcd")
+    o3d.io.write_point_cloud("samp_pcd.ply", samp_pcd)
+
+    # reproj pcd to depth
+    pts = np.asarray(samp_pcd.points)
+    x = pts[:, 0]
+    # x = np.array(x * fx)
+    y = pts[:, 1]
+    # y = np.array(y * fy)
+    z = pts[:, 2]
+
+    # bbox = o3d.geometry.OrientedBoundingBox()
+    maxbbox = o3d.geometry.Geometry3D.get_max_bound(samp_pcd)
+    minbbox = o3d.geometry.Geometry3D.get_min_bound(samp_pcd)
+    depth_pc = abs(maxbbox[2] - minbbox[2])
+
+    # align = offset_
+    # max_size = 2 * std::max(std::max(align[0] - minbbox[0], maxbbox[0] - align[0]),
+    #                         std::max(align[1] - minbbox[1], maxbbox[1] - align[1]))
+    #
+    # project_width_ = 128
+    # project_height_ = 128
+    # pos_x_ratio = (project_width_ - 1.) / max_size
+    # pos_y_ratio = (project_height_ - 1.) / max_size
+    #
+    # values(project_width_ * project_height_, 0.0)
+    # indeces(project_width_ * project_height_, 0)
+    
